@@ -60,6 +60,30 @@ http://localhost:4174/?mode=edit&key=local-edit-key
 
 For deployment, set `EDIT_KEY` in the hosting provider environment and use that value in the edit-mode URL.
 
+## GitHub Pages
+
+This project includes a GitHub Actions workflow that deploys the Vite frontend to GitHub Pages whenever code is pushed to `main`.
+
+Repository:
+
+```text
+https://github.com/Lorialtenburg/lori-project-dashboard
+```
+
+GitHub Pages URL:
+
+```text
+https://lorialtenburg.github.io/lori-project-dashboard/
+```
+
+GitHub Pages is a static host. The deployed Pages site loads as a static preview and does not run the Express backend, save edits, save manager comments, or provide live updates. Use the local Node server or a Node-compatible hosting provider for the full shared backend experience.
+
+To build the GitHub Pages version locally:
+
+```bash
+npm run build:pages
+```
+
 ## Technology Stack
 
 - React

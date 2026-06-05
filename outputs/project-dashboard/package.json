@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node server.js --dev",
     "build": "vite build",
+    "build:pages": "vite build --mode github-pages",
     "start": "node server.js"
   },
   "dependencies": {

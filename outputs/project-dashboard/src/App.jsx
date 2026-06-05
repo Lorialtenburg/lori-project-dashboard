@@ -29,6 +29,36 @@ const fieldLabels = {
   update: "Project update"
 };
 
+const staticStatuses = ["Not Started", "In Progress", "At Risk", "Blocked", "Complete", "Deferred"];
+
+const staticProjects = [
+  ["suspended-hotels-decomm", "Suspended Hotels / Decomm Process", "In Progress"],
+  ["v5-tracking", "V5 Tracking", "In Progress"],
+  ["v5-extended-contracts", "V5 Customers with Extended Contracts", "In Progress"],
+  ["distribution-contract-renewals", "Distribution Contract Renewals", "In Progress"],
+  ["weekly-install-implementation", "Weekly Install/Implementation Reports", "In Progress"],
+  ["monthly-billing-summary", "Monthly Billing Summary", "In Progress"],
+  ["monthly-billing-audit", "Monthly Billing Audit", "In Progress"],
+  ["iad-fra-region-oda", "IAD to FRA region switch ODA", "In Progress"]
+];
+
+function makeStaticDashboard() {
+  return {
+    statuses: staticStatuses,
+    projects: staticProjects.map(([id, name, status]) => ({
+      id,
+      name,
+      status,
+      updates: [],
+      lastUpdatedAt: "",
+      lastUpdatedBy: ""
+    })),
+    comments: [],
+    audit: [],
+    serverTime: new Date().toISOString()
+  };
+}
+
 function getParams() {
   return new URLSearchParams(window.location.search);
 }
@@ -91,11 +121,11 @@ function StatusChip({ status }) {
   return <span className={`status-chip ${statusClass[status] || ""}`}>{status}</span>;
 }
 
-function ConnectionStatus({ connected }) {
+function ConnectionStatus({ connected, staticMode }) {
   return (
-    <span className={`connection ${connected ? "is-live" : "is-offline"}`}>
+    <span className={`connection ${staticMode ? "is-static" : connected ? "is-live" : "is-offline"}`}>
       <span className="connection-dot" />
-      {connected ? "Live" : "Reconnecting"}
+      {staticMode ? "Static" : connected ? "Live" : "Reconnecting"}
     </span>
   );
 }
@@ -106,6 +136,7 @@ function App() {
   const isEditor = params.get("mode") === "edit" && editKey.length > 0;
   const [dashboard, setDashboard] = useState(null);
   const [connected, setConnected] = useState(false);
+  const [staticMode, setStaticMode] = useState(false);
   const [activeStatus, setActiveStatus] = useState("All");
   const [drafts, setDrafts] = useState({});
   const [updateDrafts, setUpdateDrafts] = useState({});
@@ -120,6 +151,9 @@ function App() {
   const hasSeenDashboard = useRef(false);
   const knownUpdateIds = useRef(new Set());
   const updateAlertTimeout = useRef(null);
+  const canEdit = isEditor && !staticMode;
+  const canComment = !staticMode;
+  const dashboardImageSrc = `${import.meta.env.BASE_URL}assets/dashboard-illustration.svg`;
 
   function collectProjectUpdates(data) {
     return (data?.projects || []).flatMap((project) =>
@@ -177,18 +211,36 @@ function App() {
 
   useEffect(() => {
     let mounted = true;
+    let events;
+
+    if (import.meta.env.MODE === "github-pages") {
+      setStaticMode(true);
+      applyDashboardUpdate(makeStaticDashboard());
+      setNotice("Static GitHub Pages preview. Live editing requires the Node server.");
+      return () => {
+        mounted = false;
+      };
+    }
 
     fetch("/api/state")
       .then((response) => response.json())
       .then((data) => {
         if (mounted) {
+          setStaticMode(false);
           applyDashboardUpdate(data);
         }
       })
-      .catch(() => setNotice("Unable to load dashboard data."));
+      .catch(() => {
+        if (mounted) {
+          setStaticMode(true);
+          applyDashboardUpdate(makeStaticDashboard());
+          setNotice("Static preview loaded. Live editing requires the Node server.");
+        }
+      });
 
-    const events = new EventSource("/api/events");
+    events = new EventSource("/api/events");
     events.addEventListener("state", (event) => {
+      setStaticMode(false);
       applyDashboardUpdate(JSON.parse(event.data));
       setConnected(true);
     });
@@ -198,7 +250,7 @@ function App() {
 
     return () => {
       mounted = false;
-      events.close();
+      events?.close();
     };
   }, []);
 
@@ -312,7 +364,7 @@ function App() {
   }
 
   async function patchProject(projectId, updates) {
-    if (!isEditor) {
+    if (!canEdit) {
       return;
     }
 
@@ -334,7 +386,7 @@ function App() {
   }
 
   async function commitField(project, field) {
-    if (!isEditor) {
+    if (!canEdit) {
       return;
     }
 
@@ -369,7 +421,7 @@ function App() {
   async function submitNewProject(event) {
     event.preventDefault();
 
-    if (!isEditor) {
+    if (!canEdit) {
       return;
     }
 
@@ -406,7 +458,7 @@ function App() {
   async function submitProjectUpdate(event, project) {
     event.preventDefault();
 
-    if (!isEditor) {
+    if (!canEdit) {
       return;
     }
 
@@ -452,7 +504,7 @@ function App() {
     event.preventDefault();
     const text = commentText.trim();
 
-    if (!text) {
+    if (!canComment || !text) {
       return;
     }
 
@@ -494,7 +546,7 @@ function App() {
     <main className="app-shell">
       <header className="dashboard-header">
         <div className="dashboard-image-wrap">
-          <img src="/assets/dashboard-illustration.svg" alt="Project dashboard illustration" />
+          <img src={dashboardImageSrc} alt="Project dashboard illustration" />
         </div>
         <div className="topbar dashboard-title-bar">
           <div>
@@ -502,12 +554,12 @@ function App() {
             <h1>Lori Project Dashboard</h1>
           </div>
           <div className="top-actions">
-            <ConnectionStatus connected={connected} />
-            <span className={`mode-badge ${isEditor ? "mode-edit" : "mode-read"}`}>
-              {isEditor ? <PencilLine size={15} aria-hidden="true" /> : <Lock size={15} aria-hidden="true" />}
-              {isEditor ? "Edit Mode" : "Manager View"}
+            <ConnectionStatus connected={connected} staticMode={staticMode} />
+            <span className={`mode-badge ${canEdit ? "mode-edit" : "mode-read"}`}>
+              {canEdit ? <PencilLine size={15} aria-hidden="true" /> : <Lock size={15} aria-hidden="true" />}
+              {staticMode ? "Static View" : canEdit ? "Edit Mode" : "Manager View"}
             </span>
-            {isEditor && (
+            {canEdit && (
               <button className="icon-button" type="button" onClick={copyManagerLink} title="Copy manager link">
                 <Clipboard size={16} aria-hidden="true" />
                 Manager Link
@@ -537,7 +589,7 @@ function App() {
         </div>
       </section>
 
-      {isEditor && (
+      {canEdit && (
         <form className="add-project-form" onSubmit={submitNewProject}>
           <input
             value={newProjectName}
@@ -597,7 +649,7 @@ function App() {
                   key={project.id}
                 >
                   <td data-label="Project">
-                    {isEditor ? (
+                    {canEdit ? (
                       <input
                         className="project-name-input"
                         value={draft.name || ""}
@@ -615,7 +667,7 @@ function App() {
                     )}
                   </td>
                   <td data-label="Status">
-                    {isEditor ? (
+                    {canEdit ? (
                       <select
                         className={`status-select ${statusClass[draft.status] || ""}`}
                         value={draft.status}
@@ -684,7 +736,7 @@ function App() {
                             <p className="empty-state">No updates yet.</p>
                           )}
                         </div>
-                        {isEditor && (
+                        {canEdit && (
                           <form className="project-update-form" onSubmit={(event) => submitProjectUpdate(event, project)}>
                             <textarea
                               value={updateDrafts[project.id]?.nextTask || ""}
@@ -724,24 +776,26 @@ function App() {
             <MessageSquare size={18} aria-hidden="true" />
             <h2>Manager Comments</h2>
           </div>
-          <form className="comment-form" onSubmit={submitComment}>
-            <input
-              value={actor}
-              onChange={(event) => setActor(event.target.value)}
-              placeholder="Reviewer name"
-              aria-label="Reviewer name"
-            />
-            <textarea
-              value={commentText}
-              onChange={(event) => setCommentText(event.target.value)}
-              placeholder="Add a manager comment"
-              aria-label="Manager comment"
-            />
-            <button className="primary-button" type="submit" disabled={!commentText.trim()}>
-              <Send size={16} aria-hidden="true" />
-              Add Comment
-            </button>
-          </form>
+          {canComment && (
+            <form className="comment-form" onSubmit={submitComment}>
+              <input
+                value={actor}
+                onChange={(event) => setActor(event.target.value)}
+                placeholder="Reviewer name"
+                aria-label="Reviewer name"
+              />
+              <textarea
+                value={commentText}
+                onChange={(event) => setCommentText(event.target.value)}
+                placeholder="Add a manager comment"
+                aria-label="Manager comment"
+              />
+              <button className="primary-button" type="submit" disabled={!commentText.trim()}>
+                <Send size={16} aria-hidden="true" />
+                Add Comment
+              </button>
+            </form>
+          )}
           <div className="comment-list">
             {dashboard.comments.length === 0 ? (
               <p className="empty-state">No manager comments yet.</p>

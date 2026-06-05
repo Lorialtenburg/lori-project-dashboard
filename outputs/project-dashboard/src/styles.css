@@ -167,6 +167,10 @@ h2 {
   background: #c7524c;
 }
 
+.connection.is-static .connection-dot {
+  background: #687484;
+}
+
 .mode-edit {
   border-color: #c7d9f2;
   color: #225c9b;
